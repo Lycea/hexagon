@@ -11,8 +11,6 @@
    down="down",
    
    escape="exit",
-   u ="use",
-   x = "attack",
    ["return"] = "select",
    
    mt={
@@ -28,12 +26,8 @@
 
 
 key_list_game={
-  up={move={0,-1}},
-  down={move={0,1}},
-  left={move={-1,0}},
-  right={move={1,0}},
-  
-  attack={attack=true},
+  left={move={-4,0}},
+  right={move={4,0}},
   
   exit = {exit = true},
   default={},

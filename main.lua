@@ -13,6 +13,8 @@ class_base= require("helper.classic")
 console =require("helper.console")
 timer =require("helper.timer")
 
+global = require("globals")
+
 game =require("game")
 
 
@@ -117,6 +119,8 @@ end
 
 
 function love.resize(w,h)
-        scr_h=h
-        scr_w=w
+        global.scr_height=h
+        global.scr_width=w
+		
+		game.resize()
 end

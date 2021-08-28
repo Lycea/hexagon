@@ -1,3 +1,5 @@
+
+
 require("key_handle")
 require("renderer.renderer")
 
@@ -51,10 +53,16 @@ main_menue_item = 1
 selected_state_idx = 1
 
 
+
+
+-------
+
+
 ----------------------------------------------------------- 
 -- special data fields for debugging / testing only 
 ----------------------------------------------------------- 
-
+show_main_menue = false
+game_state=GameStates.PLAYING
 
 
 function update_menue()
@@ -129,27 +137,7 @@ function game.play(dt)
         --print(key,v)
         local action=handle_keys(key)--get key callbacks
         
-        
-        
-        if action["move"] and game_state==GameStates.PLAYING then
-            movement.x=movement.x+action["move"][1]
-            movement.y=movement.y+action["move"][2]
-        end
-        
-        
-        if action["exit"]  then
-            
-            if exit_timer +0.3 < love.timer.getTime() then
-                love.event.quit()
-            end
-            
-        end
-        
-        
-        if action["attack"] then
-            attack = true
-            
-        end
+		sample_state:handle_action(action)
       
   end
  
@@ -215,6 +203,9 @@ function game.MouseMoved(mx,my)
   mouse_coords={mx,my}
 end 
  
+function game.resize()
+	reset_canvas()
+end
  
 
 return game
