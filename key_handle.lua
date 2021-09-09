@@ -26,8 +26,8 @@
 
 
 key_list_game={
-  left={move={4,0}},
-  right={move={-4,0}},
+  left={move={-4,0}},
+  right={move={4,0}},
   
   exit = {exit = true},
   default={},

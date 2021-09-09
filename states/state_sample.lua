@@ -5,65 +5,23 @@ local function get_point(angle,radius,w_off,h_off)
 	local px = w_off + radius*math.sin(math.rad(angle)) 
 	local py = h_off + radius*math.cos(math.rad(angle)) 
 	
-	return {px,py}
+	return px,py
 end
 
-local lifetime = 0
+
 function reset_canvas()
 	global.bgc_canvas = love.graphics.newCanvas(global.scr_width,global.scr_height)
+	--function math.angle(x1,y1, x2,y2) return math.atan2(y2-y1, x2-x1) end
+	--degrees
 	
 	love.graphics.setCanvas(global.bgc_canvas)
 	love.graphics.rectangle("fill",0,0,global.scr_width,global.scr_height)
 	love.graphics.setCanvas()
 	
-	
-	global.bgc_shader:send("half_width",global.scr_width/2)
-	global.bgc_shader:send("half_height",global.scr_height/2)
-	global.bgc_shader:send("angle_offset",global.circle_offset)
+	global.bgc_shader:send("center", {global.scr_width/2, global.scr_height/2})
+	global.bgc_shader:send("angleOffset", {math.cos(math.rad(global.circle_offset)),
+	                                        math.sin(math.rad(global.circle_offset))})
 end
-
-local function spawn_obstacle()
-	local base_dist = (global.scr_width + global.scr_height)/2 +40
-	global.obstacle ={} --definition of obstacle
-	
-	if love.math.random(10) >5 then
-		--insert simple three obstacle
-		for i= (love.math.random(10)%2)+1,6,2 do
-			global.obstacle[i] ={points={},distance=base_dist}
-		end
-	else
-		local jmp_number = love.math.random(5)
-		for i=1, 6 do
-			if i ~= jmp_number then
-				global.obstacle[i] ={points={},distance=base_dist}
-			end
-		end
-	end
-	
-	recalc_obstacles()
-end
-
-function recalc_obstacles()
-	
-	local poly_height = 40
-		
-	for idx,item in pairs(global.obstacle) do
-		if item.distance < 30 then
-			spawn_obstacle()
-			break
-		end
-		
-		global.obstacle[idx].points={}
-		
-		table.insert(global.obstacle[idx].points,  get_point((idx)*60 +global.circle_offset +30,item.distance +poly_height,global.scr_width/2,global.scr_height/2)  ) --top left
-		table.insert(global.obstacle[idx].points,  get_point((idx+1)*60 +global.circle_offset +30,item.distance +poly_height,global.scr_width/2,global.scr_height/2)  ) --top right
-		table.insert(global.obstacle[idx].points,  get_point((idx+1)*60 +global.circle_offset +30,item.distance,global.scr_width/2,global.scr_height/2)  ) --bot right
-		table.insert(global.obstacle[idx].points,  get_point((idx+0)*60 +global.circle_offset +30,item.distance,global.scr_width/2,global.scr_height/2)  ) --bot left
-	end
-	
-end
-
-
 
 function sample_state:new()
 
@@ -73,38 +31,92 @@ function sample_state:new()
 	global.player ={dist=100,angle=0}
 	
 	global.bgc_shader = love.graphics.newShader [[
-		//#pragma language glsl3
-        extern vec4 ColorA;
-        extern vec4 ColorB;
-		
-		extern float half_width;
-		extern float half_height;
-		
-		extern float angle_offset;
-		
-        vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords)
-        {	
-			
-			
-			float angle =degrees(atan(pixel_coords.y-half_height,pixel_coords.x-half_width))+angle_offset;
-			float sector = fract(angle/120);
-			
-			if(sector >0.5)
-			{
-				return vec4(0.0,0.0,1.0,1.0);
-			}
-			else
-			{
-				return vec4(0.0,1.0,0.0,1.0);
-			}
-			
-            
+#pragma language glsl3
+vec4 ColorA = vec4(0.0,0.0,1.0,1.0);
+vec4 ColorB = vec4(0.0,1.0,0.0,1.0);
+
+extern vec2 center;
+extern vec2 angleOffset;
+extern vec3 pointParams; // x y size
+extern vec4 ring0Params; // radius with type(0 2 3 -5) rotation
+extern vec4 ring1Params; // radius with type(0 2 3 -5) rotation
+
+float distanceAA(vec2 v)
+{
+    return abs(v.x) + abs(v.y);
+}
+
+const vec2[3] faces = vec2[3](vec2(1, 0), vec2(cos(radians(60)), sin(radians(60))), vec2(cos(radians(120)), sin(radians(120))));
+
+bool innerHexagon(vec2 v, out vec4 c)
+{
+    c = vec4(1);
+
+    for(int i = 0; i < 3; i++)
+        if(abs(dot(faces[i], v)) > 60)
+            return false;
+
+    for(int i = 0; i < 3; i++)
+        if(abs(dot(faces[i], v)) > 50)
+            return true;
+
+    c = ColorA;
+    return true;
+}
+
+bool hexagon(vec2 v, float angle,
+             float radius, float width,
+             float type, float offset) // type = [0 2 3 -5]
+{
+    for(int i = 0; i < 3; i++)
+        if(abs(dot(faces[i], v)) > radius + width)
+            return false;
+
+    for(int i = 0; i < 3; i++)
+        if(abs(dot(faces[i], v)) > radius)
+        {
+            float ccc = angle / radians(360) + offset / 6 + 0.5 / 6;
+            return fract(ccc * max(type, 1)) < abs(type / 6.0);
         }
-    ]]
+
+    return false;
+}
+
+bool point(vec2 v, vec2 p, float size)
+{
+    vec2 d = abs(v - p);
+    return dot(d, d) < size * size; //max(d.x, d.y) < size;
+}
+
+vec4 effect(vec4 color, Image texture, vec2 texture_coords, vec2 pixel_coords)
+{
+    if(point(pixel_coords, pointParams.xy, pointParams.z))
+        return vec4(1);
+
+    vec2 v = pixel_coords - center;
+    v *= mat2(angleOffset.x, -angleOffset.y,
+              angleOffset.y, angleOffset.x);
+
+    vec4 c;
+    if(innerHexagon(v, c))
+        return c;
+
+    float angle = atan(v.y, v.x);
+
+    if(hexagon(v, angle, ring0Params.x, ring0Params.y, ring0Params.z, ring0Params.w))
+        return vec4(1);
+
+    if(hexagon(v, angle, ring1Params.x, ring1Params.y, ring1Params.z, ring1Params.w))
+        return vec4(1);
+
+    float sector = fract(angle / radians(120) - 0.25);
+    return mix(ColorA, ColorB, float(sector > 0.5));
+}]]
 	
 	
 	reset_canvas()
-	spawn_obstacle()
+	
+	
 end
 
 
@@ -127,74 +139,24 @@ function sample_state:draw()
 	love.graphics.setShader(global.bgc_shader)
 	love.graphics.draw(global.bgc_canvas,0,0)
 	love.graphics.setShader()
-	
-	
-	-------------------------------------
-	--get the player position and draw it
-	
-	love.graphics.setColor(0,0,0,255)
-	love.graphics.rectangle("fill",0,0,100,100)
-	love.graphics.setColor(255,255,255,255)
-	
-	
-	local p=get_point(global.player.angle +global.circle_offset,
-		      global.player.dist,
-			  global.scr_width/2,
-			  global.scr_height/2)
-	
-	
-	love.graphics.circle("fill",p[1],p[2],10)
   
-	
-  
-  
-	-------------------------------------
-	-- draw obstacle
-	
-	for id,obstacle in pairs(global.obstacle) do
-		local point_list ={}
-		
-		for _ ,point in  pairs(obstacle.points) do
-			table.insert(point_list,point[1])
-			table.insert(point_list,point[2])
-		end
-		love.graphics.polygon("fill",point_list)
-	end
-	
-	
-	love.graphics.print(lifetime,0,30)
-	love.graphics.print(  math.floor((global.player.angle+30) / 60)%6 +1,0,45)
-	
-	local nums=""
-	for key ,_ in pairs(global.obstacle) do
-		nums= nums.."||"..key
-	end
-	love.graphics.print(nums,0,60)
-	
 end
 
 
 
-
 function sample_state:update()
-	lifetime = lifetime +love.timer.getDelta()
+	local px,py=get_point(global.player.angle,
+		      global.player.dist,
+			  global.scr_width/2,
+			  global.scr_height/2)
+	global.bgc_shader:send("pointParams", {px, py, 10.0})
+
+	global.bgc_shader:send("ring0Params", {100.0, 40.0, -5.0, 0.0})
+	global.bgc_shader:send("ring1Params", {200.0, 20.0, 3.0, 2.0})
+
     global.circle_offset=global.circle_offset-0.3
-	global.bgc_shader:send("angle_offset",global.circle_offset)
-	
-	for id,obstacle in pairs(global.obstacle) do
-		global.obstacle[id].distance= global.obstacle[id].distance- 5
-	end
-	recalc_obstacles()
-	
-	
-	
-	local p_sector = math.floor((global.player.angle+30) / 60)%6 +1
-	if global.obstacle[p_sector] ~= nil and global.obstacle[p_sector].distance <50 then
-		lifetime=0
-		spawn_obstacle()
-	end
-	
-	
+	global.bgc_shader:send("angleOffset", {math.cos(math.rad(global.circle_offset)),
+	                                        math.sin(math.rad(global.circle_offset))})
 end
 
 function sample_state:handle_action(action)
